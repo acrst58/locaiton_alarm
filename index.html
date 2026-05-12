@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 <title>위치 알람</title>
+<script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=966251451b0118a705aa6981618f9cb5&libraries=services"></script>
 <style>
   :root {
     --primary: #4F46E5; --primary-light: #818CF8; --danger: #EF4444;
@@ -17,17 +18,9 @@
   header h1 { font-size: 18px; font-weight: 700; }
   header .status-dot { margin-left: auto; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: background .3s; }
   header .status-dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); }
-  #apiKeyBanner { background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid #4338ca; margin: 16px; border-radius: var(--radius); padding: 16px; }
-  #apiKeyBanner h3 { font-size: 14px; color: #a5b4fc; margin-bottom: 8px; }
-  #apiKeyBanner p { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
-  .api-row { display: flex; gap: 8px; }
-  .api-row input { flex: 1; background: rgba(0,0,0,.3); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 13px; }
-  .api-row button { background: var(--primary); border: none; border-radius: 10px; padding: 10px 16px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-  #mapWrap { margin: 0 16px 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); position: relative; }
-  #map { width: 100%; height: 300px; background: #111; display: none; }
-  #mapPlaceholder { width: 100%; height: 300px; background: var(--card2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
-  #mapPlaceholder .icon { font-size: 40px; }
-  .map-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: #fff; pointer-events: none; white-space: nowrap; display: none; }
+  #mapWrap { margin: 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); position: relative; }
+  #map { width: 100%; height: 300px; }
+  .map-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: #fff; pointer-events: none; white-space: nowrap; }
   .section { margin: 0 16px 16px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
   .card-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; font-weight: 600; }
@@ -74,19 +67,12 @@
   <h1>위치 알람</h1>
   <div class="status-dot" id="statusDot"></div>
 </header>
-<div id="apiKeyBanner">
-  <h3>🔑 카카오 지도 API 키 입력</h3>
-  <p>developers.kakao.com → 앱 생성 → 플랫폼 → Web → 도메인 등록 후 <b>JavaScript 키</b>를 입력하세요.</p>
-  <div class="api-row">
-    <input id="apiKeyInput" type="text" placeholder="JavaScript 앱 키를 붙여넣으세요"/>
-    <button onclick="loadKakaoMap()">지도 불러오기</button>
-  </div>
-</div>
+
 <div id="mapWrap">
-  <div id="mapPlaceholder"><div class="icon">🗺️</div><div>API 키 입력 후 지도가 표시됩니다</div></div>
   <div id="map"></div>
-  <div class="map-hint" id="mapHint">지도를 클릭해서 목적지를 선택하세요</div>
+  <div class="map-hint">지도를 클릭해서 목적지를 선택하세요</div>
 </div>
+
 <div class="section">
   <div class="card">
     <div class="card-title">목적지</div>
@@ -100,6 +86,7 @@
     </div>
   </div>
 </div>
+
 <div class="section">
   <div class="card">
     <div class="card-title">알람 설정</div>
@@ -150,6 +137,7 @@
     <button id="testBtn" onclick="playAlarm(true)">▶ 알람음 미리듣기</button>
   </div>
 </div>
+
 <div class="section" id="distanceCard">
   <div class="card">
     <div class="card-title">현재 거리</div>
@@ -160,153 +148,152 @@
     </div>
   </div>
 </div>
+
 <div class="section">
   <button id="alarmToggle" class="off" onclick="toggleAlarm()">
     <span id="toggleIcon">🔔</span><span id="toggleText">알람 켜기</span>
   </button>
 </div>
+
 <div id="alarmOverlay">
   <div class="bell">🔔</div>
   <h2>목적지 근처입니다!</h2>
   <p id="overlayMsg"></p>
   <button id="dismissBtn" onclick="dismissAlarm()">알람 끄기</button>
 </div>
+
 <script>
-let map,marker,destMarker,watchId,dest=null,isRunning=false,alarmFired=false,alarmInterval=null,audioCtx=null,startDist=null;
-const speedMap={walk:5,bike:15,car:40,subway:35};
-function loadKakaoMap(){
-  const key=document.getElementById('apiKeyInput').value.trim();
-  if(!key){alert('API 키를 입력해 주세요.');return;}
-  localStorage.setItem('kakao_key',key);
-  const s=document.createElement('script');
-  s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+key+'&libraries=services&autoload=false';
-  s.onload=()=>{kakao.maps.load(()=>{
-    document.getElementById('apiKeyBanner').style.display='none';
-    document.getElementById('mapPlaceholder').style.display='none';
-    const mapEl=document.getElementById('map');
-    mapEl.style.display='block';
-    document.getElementById('mapHint').style.display='block';
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const c=new kakao.maps.LatLng(pos.coords.latitude,pos.coords.longitude);
-      map=new kakao.maps.Map(mapEl,{center:c,level:4});
-      marker=new kakao.maps.Marker({position:c,map});
-      kakao.maps.event.addListener(map,'click',e=>setDestination(e.latLng));
-    },()=>{
-      const c=new kakao.maps.LatLng(37.5665,126.9780);
-      map=new kakao.maps.Map(mapEl,{center:c,level:5});
-      kakao.maps.event.addListener(map,'click',e=>setDestination(e.latLng));
-    });
-  });};
-  s.onerror=()=>alert('API 키 오류 또는 도메인 미등록');
-  document.head.appendChild(s);
-}
-function setDestination(latLng){
-  if(destMarker)destMarker.setMap(null);
-  destMarker=new kakao.maps.Marker({position:latLng,map});
-  const gc=new kakao.maps.services.Geocoder();
-  gc.coord2Address(latLng.getLng(),latLng.getLat(),(result,status)=>{
-    let addr='위치 선택됨';
-    if(status===kakao.maps.services.Status.OK)
-      addr=result[0].road_address?result[0].road_address.address_name:result[0].address.address_name;
-    dest={lat:latLng.getLat(),lng:latLng.getLng(),address:addr};
-    document.getElementById('destAddr').textContent=addr;
-    document.getElementById('destCoords').textContent=dest.lat.toFixed(5)+', '+dest.lng.toFixed(5);
-    startDist=null;
+let map, marker, destMarker, watchId, dest=null, isRunning=false, alarmFired=false;
+let alarmInterval=null, audioCtx=null, startDist=null;
+const speedMap = {walk:5, bike:15, car:40, subway:35};
+
+window.onload = function() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    const c = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+    map = new kakao.maps.Map(document.getElementById('map'), {center: c, level: 4});
+    marker = new kakao.maps.Marker({position: c, map});
+    kakao.maps.event.addListener(map, 'click', e => setDestination(e.latLng));
+  }, () => {
+    const c = new kakao.maps.LatLng(37.5665, 126.9780);
+    map = new kakao.maps.Map(document.getElementById('map'), {center: c, level: 5});
+    kakao.maps.event.addListener(map, 'click', e => setDestination(e.latLng));
+  });
+};
+
+function setDestination(latLng) {
+  if (destMarker) destMarker.setMap(null);
+  destMarker = new kakao.maps.Marker({position: latLng, map});
+  const gc = new kakao.maps.services.Geocoder();
+  gc.coord2Address(latLng.getLng(), latLng.getLat(), (result, status) => {
+    let addr = '위치 선택됨';
+    if (status === kakao.maps.services.Status.OK)
+      addr = result[0].road_address ? result[0].road_address.address_name : result[0].address.address_name;
+    dest = {lat: latLng.getLat(), lng: latLng.getLng(), address: addr};
+    document.getElementById('destAddr').textContent = addr;
+    document.getElementById('destCoords').textContent = dest.lat.toFixed(5) + ', ' + dest.lng.toFixed(5);
+    startDist = null;
   });
 }
-function clearDestination(){
-  dest=null;if(destMarker){destMarker.setMap(null);destMarker=null;}
-  document.getElementById('destAddr').textContent='지도에서 목적지를 선택해 주세요';
-  document.getElementById('destCoords').textContent='';
+
+function clearDestination() {
+  dest = null;
+  if (destMarker) { destMarker.setMap(null); destMarker = null; }
+  document.getElementById('destAddr').textContent = '지도에서 목적지를 선택해 주세요';
+  document.getElementById('destCoords').textContent = '';
 }
-window.addEventListener('load',()=>{const s=localStorage.getItem('kakao_key');if(s)document.getElementById('apiKeyInput').value=s;});
-function updateRadius(v){document.getElementById('radiusVal').textContent=v>=1000?(v/1000).toFixed(1)+'km':v+'m';}
-function updateVolume(v){document.getElementById('volumeVal').textContent=v+'%';}
-function toggleAlarm(){if(!isRunning)startAlarm();else stopAlarm();}
-function startAlarm(){
-  if(!dest){alert('먼저 지도에서 목적지를 선택해 주세요.');return;}
-  if(!navigator.geolocation){alert('위치 서비스를 지원하지 않는 브라우저입니다.');return;}
-  isRunning=true;alarmFired=false;startDist=null;
-  document.getElementById('alarmToggle').className='on';
-  document.getElementById('toggleIcon').textContent='🔕';
-  document.getElementById('toggleText').textContent='알람 끄기';
+
+function updateRadius(v) { document.getElementById('radiusVal').textContent = v >= 1000 ? (v/1000).toFixed(1)+'km' : v+'m'; }
+function updateVolume(v) { document.getElementById('volumeVal').textContent = v+'%'; }
+
+function toggleAlarm() { if (!isRunning) startAlarm(); else stopAlarm(); }
+
+function startAlarm() {
+  if (!dest) { alert('먼저 지도에서 목적지를 선택해 주세요.'); return; }
+  isRunning = true; alarmFired = false; startDist = null;
+  document.getElementById('alarmToggle').className = 'on';
+  document.getElementById('toggleIcon').textContent = '🔕';
+  document.getElementById('toggleText').textContent = '알람 끄기';
   document.getElementById('statusDot').classList.add('active');
   document.getElementById('distanceCard').classList.add('visible');
-  watchId=navigator.geolocation.watchPosition(onPosition,e=>console.warn(e),{enableHighAccuracy:true,maximumAge:5000,timeout:10000});
+  watchId = navigator.geolocation.watchPosition(onPosition, e => console.warn(e),
+    {enableHighAccuracy: true, maximumAge: 5000, timeout: 10000});
 }
-function stopAlarm(){
-  isRunning=false;
-  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+
+function stopAlarm() {
+  isRunning = false;
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   clearAlarmSound();
-  document.getElementById('alarmToggle').className='off';
-  document.getElementById('toggleIcon').textContent='🔔';
-  document.getElementById('toggleText').textContent='알람 켜기';
+  document.getElementById('alarmToggle').className = 'off';
+  document.getElementById('toggleIcon').textContent = '🔔';
+  document.getElementById('toggleText').textContent = '알람 켜기';
   document.getElementById('statusDot').classList.remove('active');
   document.getElementById('distanceCard').classList.remove('visible');
 }
-function onPosition(pos){
-  const {latitude:lat,longitude:lng}=pos.coords;
-  if(map&&marker)marker.setPosition(new kakao.maps.LatLng(lat,lng));
-  if(!dest)return;
-  const dist=getDistance(lat,lng,dest.lat,dest.lng)*1000;
-  const radius=parseInt(document.getElementById('radiusRange').value);
-  if(!startDist)startDist=Math.max(dist,radius);
-  const pct=Math.max(0,Math.min(100,(1-dist/startDist)*100));
-  const numEl=document.getElementById('distNum');
-  const unitEl=document.getElementById('distUnit');
-  if(dist>=1000){numEl.textContent=(dist/1000).toFixed(1);unitEl.textContent='km 남음';}
-  else{numEl.textContent=Math.round(dist);unitEl.textContent='m 남음';}
-  const speed=speedMap[document.getElementById('transportMode').value]*1000/3600;
-  const eta=Math.round(dist/speed/60);
-  if(eta>0)unitEl.textContent+=' (약 '+eta+'분)';
-  document.getElementById('distBar').style.width=pct+'%';
-  if(!alarmFired&&dist<=radius){alarmFired=true;fireAlarm(Math.round(dist));}
+
+function onPosition(pos) {
+  const {latitude: lat, longitude: lng} = pos.coords;
+  if (map && marker) marker.setPosition(new kakao.maps.LatLng(lat, lng));
+  if (!dest) return;
+  const dist = getDistance(lat, lng, dest.lat, dest.lng) * 1000;
+  const radius = parseInt(document.getElementById('radiusRange').value);
+  if (!startDist) startDist = Math.max(dist, radius);
+  const pct = Math.max(0, Math.min(100, (1 - dist / startDist) * 100));
+  const numEl = document.getElementById('distNum'), unitEl = document.getElementById('distUnit');
+  if (dist >= 1000) { numEl.textContent = (dist/1000).toFixed(1); unitEl.textContent = 'km 남음'; }
+  else { numEl.textContent = Math.round(dist); unitEl.textContent = 'm 남음'; }
+  const speed = speedMap[document.getElementById('transportMode').value] * 1000 / 3600;
+  const eta = Math.round(dist / speed / 60);
+  if (eta > 0) unitEl.textContent += ' (약 ' + eta + '분)';
+  document.getElementById('distBar').style.width = pct + '%';
+  if (!alarmFired && dist <= radius) { alarmFired = true; fireAlarm(Math.round(dist)); }
 }
-function getDistance(lat1,lon1,lat2,lon2){
-  const R=6371,r=Math.PI/180,dLat=(lat2-lat1)*r,dLon=(lon2-lon1)*r;
-  const a=Math.sin(dLat/2)**2+Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
-  return R*2*Math.asin(Math.sqrt(a));
+
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R=6371, r=Math.PI/180, dLat=(lat2-lat1)*r, dLon=(lon2-lon1)*r;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
 }
-function getAudioCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
-const soundDefs={
-  bell:[{f:880,t:0},{f:1100,t:.15},{f:880,t:.3}],
-  chime:[{f:523,t:0},{f:659,t:.2},{f:784,t:.4},{f:1047,t:.6}],
-  urgent:[{f:1200,t:0},{f:800,t:.12},{f:1200,t:.24},{f:800,t:.36}],
-  soft:[{f:440,t:0},{f:550,t:.3},{f:440,t:.6}],
-  beep:[{f:1000,t:0},{f:1000,t:.25}]
+
+function getAudioCtx() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
+const soundDefs = {
+  bell: [{f:880,t:0},{f:1100,t:.15},{f:880,t:.3}],
+  chime: [{f:523,t:0},{f:659,t:.2},{f:784,t:.4},{f:1047,t:.6}],
+  urgent: [{f:1200,t:0},{f:800,t:.12},{f:1200,t:.24},{f:800,t:.36}],
+  soft: [{f:440,t:0},{f:550,t:.3},{f:440,t:.6}],
+  beep: [{f:1000,t:0},{f:1000,t:.25}]
 };
-function playTone(f,st,dur,vol,ctx){
-  const osc=ctx.createOscillator(),g=ctx.createGain();
-  osc.connect(g);g.connect(ctx.destination);
-  osc.frequency.value=f;osc.type='sine';
-  g.gain.setValueAtTime(vol*0.4,st);
-  g.gain.exponentialRampToValueAtTime(0.001,st+dur);
-  osc.start(st);osc.stop(st+dur);
+function playTone(f, st, dur, vol, ctx) {
+  const osc=ctx.createOscillator(), g=ctx.createGain();
+  osc.connect(g); g.connect(ctx.destination);
+  osc.frequency.value=f; osc.type='sine';
+  g.gain.setValueAtTime(vol*0.4, st);
+  g.gain.exponentialRampToValueAtTime(0.001, st+dur);
+  osc.start(st); osc.stop(st+dur);
 }
-function playAlarmOnce(){
-  const ctx=getAudioCtx(),sound=document.getElementById('alarmSound').value;
+function playAlarmOnce() {
+  const ctx=getAudioCtx(), sound=document.getElementById('alarmSound').value;
   const vol=parseInt(document.getElementById('volumeRange').value)/100;
-  const notes=soundDefs[sound]||soundDefs.bell,now=ctx.currentTime;
-  notes.forEach(n=>playTone(n.f,now+n.t,.4,vol,ctx));
-  return(notes[notes.length-1].t+.6)*1000;
+  const notes=soundDefs[sound]||soundDefs.bell, now=ctx.currentTime;
+  notes.forEach(n => playTone(n.f, now+n.t, .4, vol, ctx));
+  return (notes[notes.length-1].t + .6) * 1000;
 }
-function playAlarm(testOnly){
+function playAlarm(testOnly) {
   clearAlarmSound();
-  const repeat=testOnly?1:parseInt(document.getElementById('repeatCount').value);
-  let count=0;
-  const fire=()=>{const dur=playAlarmOnce();count++;if(repeat===0||count<repeat)alarmInterval=setTimeout(fire,dur+200);};
+  const repeat = testOnly ? 1 : parseInt(document.getElementById('repeatCount').value);
+  let count = 0;
+  const fire = () => { const dur=playAlarmOnce(); count++; if(repeat===0||count<repeat) alarmInterval=setTimeout(fire, dur+200); };
   fire();
 }
-function clearAlarmSound(){if(alarmInterval){clearTimeout(alarmInterval);alarmInterval=null;}}
-function fireAlarm(distM){
-  document.getElementById('overlayMsg').textContent='목적지까지 약 '+distM+'m 남았습니다';
+function clearAlarmSound() { if (alarmInterval) { clearTimeout(alarmInterval); alarmInterval=null; } }
+function fireAlarm(distM) {
+  document.getElementById('overlayMsg').textContent = '목적지까지 약 ' + distM + 'm 남았습니다';
   document.getElementById('alarmOverlay').classList.add('show');
   playAlarm(false);
-  if(Notification.permission==='granted')new Notification('📍 위치 알람',{body:'목적지까지 약 '+distM+'m 남았습니다!'});
-  else if(Notification.permission!=='denied')Notification.requestPermission().then(p=>{if(p==='granted')new Notification('📍 위치 알람',{body:'목적지까지 약 '+distM+'m 남았습니다!'});});
+  if (Notification.permission === 'granted') new Notification('📍 위치 알람', {body: '목적지까지 약 '+distM+'m 남았습니다!'});
+  else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if(p==='granted') new Notification('📍 위치 알람', {body: '목적지까지 약 '+distM+'m 남았습니다!'}); });
 }
-function dismissAlarm(){document.getElementById('alarmOverlay').classList.remove('show');clearAlarmSound();stopAlarm();}
-if(typeof Notification!=='undefined'&&Notification.permission==='default')Notification.requestPermission();
+function dismissAlarm() { document.getElementById('alarmOverlay').classList.remove('show'); clearAlarmSound(); stopAlarm(); }
+if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
 </script>
 </body>
 </html>
